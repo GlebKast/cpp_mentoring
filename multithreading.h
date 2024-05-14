@@ -21,12 +21,15 @@ public:
 
     ReturnCode copy(const std::string &sourceName, const std::string &targetName)
     {
+        std::filesystem::path filePath(targetName);
+        if (filePath.has_parent_path() && !std::filesystem::exists(filePath.parent_path())) 
+        {
+            return ReturnCode::WriteError;
+        }
+
         auto readF = std::async(std::launch::async, &CopyTool::read, this, sourceName);
         auto writeF = std::async(std::launch::async, &CopyTool::write, this, targetName);
 
-        std::filesystem::path p{sourceName};
-        std::filesystem::path pC{targetName};
-        
         if(readF.get() != ReturnCode::Success)
         {
             return ReturnCode::ReadError;
@@ -35,9 +38,14 @@ public:
         {
             return ReturnCode::WriteError;
         }
-        else if(std::filesystem::file_size(p) != std::filesystem::file_size(pC))
+        else
         {
-            return ReturnCode::CopyError;
+            std::filesystem::path p{sourceName};
+            std::filesystem::path pC{targetName};
+            if(!std::filesystem::exists(p) ||  !std::filesystem::exists(pC) || std::filesystem::file_size(p) != std::filesystem::file_size(pC))
+            {
+                return ReturnCode::CopyError;
+            }
         }
 
         return ReturnCode::Success;
@@ -47,7 +55,7 @@ private:
     {
         std::ifstream file(sourceName, std::ifstream::binary);
 
-        if(!file) 
+        if(!file)
         {
             m_completed = true;
             m_chunkCV.notify_one();
@@ -55,7 +63,7 @@ private:
         }
 
         while(!file.eof())
-        {   
+        {
             std::unique_lock lk(m_chunkMutex);
 
             file.read(m_chunk.data(), m_chunk.size());
@@ -68,7 +76,7 @@ private:
             m_chunkReady = true;
 
             lk.unlock();
-            
+
             m_chunkCV.notify_one();
 
             lk.lock();
@@ -86,13 +94,13 @@ private:
     {
         std::ofstream file(targetName, std::ofstream::binary);
 
-        if(!file) 
+        if(!file)
         {
             return ReturnCode::WriteError;
         }
 
         while(true)
-        {   
+        {
             std::unique_lock lk(m_chunkMutex);
 
             m_chunkCV.wait(lk, [this]{return m_chunkReady == true || m_completed == true;});
