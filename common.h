@@ -1,16 +1,20 @@
 #pragma once
 
-#include <iostream>
-#include <string>
-#include <mutex>
-#include <future>
-#include <vector>
-#include <condition_variable>
-#include <fstream>
 #include <atomic>
+#include <boost/interprocess/ipc/message_queue.hpp>
+#include <boost/interprocess/mapped_region.hpp>
+#include <boost/interprocess/shared_memory_object.hpp>
+#include <condition_variable>
 #include <filesystem>
+#include <fstream>
+#include <future>
+#include <iostream>
+#include <mutex>
+#include <string>
+#include <vector>
 
-const std::size_t CHUNK_SIZE = 1024;
+constexpr std::size_t CHUNK_SIZE = 1024;
+constexpr std::chrono::seconds TIMEOUT(5);
 
 enum class ReturnCode
 {

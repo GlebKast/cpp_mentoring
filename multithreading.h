@@ -11,18 +11,17 @@ Second thread should write the data to the target file.
 #pragma once
 #include "common.h"
 
+namespace multithreading
+{
 class CopyTool
 {
 public:
-    CopyTool() : m_completed(false), m_chunkReady(false)
-    {
-        m_chunk.resize(CHUNK_SIZE);
-    }
+    CopyTool() : m_completed(false), m_chunkReady(false) { m_chunk.resize(CHUNK_SIZE); }
 
     ReturnCode copy(const std::string &sourceName, const std::string &targetName)
     {
         std::filesystem::path filePath(targetName);
-        if (filePath.has_parent_path() && !std::filesystem::exists(filePath.parent_path())) 
+        if(filePath.has_parent_path() && ! std::filesystem::exists(filePath.parent_path()))
         {
             return ReturnCode::WriteError;
         }
@@ -40,9 +39,11 @@ public:
         }
         else
         {
-            std::filesystem::path p{sourceName};
-            std::filesystem::path pC{targetName};
-            if(!std::filesystem::exists(p) ||  !std::filesystem::exists(pC) || std::filesystem::file_size(p) != std::filesystem::file_size(pC))
+            std::filesystem::path p {sourceName};
+            std::filesystem::path pC {targetName};
+            if(
+              ! std::filesystem::exists(p) || ! std::filesystem::exists(pC) ||
+              std::filesystem::file_size(p) != std::filesystem::file_size(pC))
             {
                 return ReturnCode::CopyError;
             }
@@ -50,19 +51,20 @@ public:
 
         return ReturnCode::Success;
     }
+
 private:
     ReturnCode read(const std::string &sourceName)
     {
         std::ifstream file(sourceName, std::ifstream::binary);
 
-        if(!file)
+        if(! file)
         {
             m_completed = true;
             m_chunkCV.notify_one();
             return ReturnCode::ReadError;
         }
 
-        while(!file.eof())
+        while(! file.eof())
         {
             std::unique_lock lk(m_chunkMutex);
 
@@ -81,7 +83,7 @@ private:
 
             lk.lock();
 
-            m_chunkCV.wait(lk, [this]{return m_chunkReady == false;});
+            m_chunkCV.wait(lk, [this] { return m_chunkReady == false; });
         }
 
         m_completed = true;
@@ -94,7 +96,7 @@ private:
     {
         std::ofstream file(targetName, std::ofstream::binary);
 
-        if(!file)
+        if(! file)
         {
             return ReturnCode::WriteError;
         }
@@ -103,7 +105,7 @@ private:
         {
             std::unique_lock lk(m_chunkMutex);
 
-            m_chunkCV.wait(lk, [this]{return m_chunkReady == true || m_completed == true;});
+            m_chunkCV.wait(lk, [this] { return m_chunkReady == true || m_completed == true; });
 
             if(m_completed == true)
             {
@@ -129,6 +131,7 @@ private:
     std::atomic<bool> m_completed;
     std::atomic<bool> m_chunkReady;
 };
+}    // namespace multithreading
 
 void runMutithreadingCopyTool(int argc, char *const argv[])
 {
@@ -137,13 +140,13 @@ void runMutithreadingCopyTool(int argc, char *const argv[])
         std::cout << "Error. Please, provide 2 arguments: source and target file names.";
         return;
     }
-    if(!std::filesystem::exists(argv[1]))
+    if(! std::filesystem::exists(argv[1]))
     {
         std::cout << "Error. File to copy doesn't exist.";
         return;
     }
 
-    CopyTool cp;
+    multithreading::CopyTool cp;
 
     ReturnCode ret = cp.copy(argv[1], argv[2]);
 

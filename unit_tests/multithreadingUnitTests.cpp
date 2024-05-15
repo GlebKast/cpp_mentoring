@@ -1,12 +1,16 @@
-#include <gtest/gtest.h>
 #include "multithreading.h"
+
+#include <gtest/gtest.h>
 
 namespace
 {
-class MultithreadingCopyToolTest : public ::testing::Test 
+
+using namespace multithreading;
+
+class MultithreadingCopyToolTest : public ::testing::Test
 {
 protected:
-    void SetUp() override 
+    void SetUp() override
     {
         std::ofstream sourceFile("source.txt");
         sourceFile << "This is a test file.";
@@ -16,19 +20,19 @@ protected:
         targetFile.close();
     }
 
-    void TearDown() override 
+    void TearDown() override
     {
         std::filesystem::remove("source.txt");
         std::filesystem::remove("target.txt");
     }
 
-    bool areFilesIdentical(const std::string& file1, const std::string& file2) 
+    bool areFilesIdentical(const std::string &file1, const std::string &file2)
     {
         auto fileSize1 = std::filesystem::file_size(file1);
         auto fileSize2 = std::filesystem::file_size(file2);
 
-        const auto MAX_SIZE = 1000000; 
-        if (fileSize1 > MAX_SIZE || fileSize2 > MAX_SIZE) 
+        const auto MAX_SIZE = 1000000;
+        if(fileSize1 > MAX_SIZE || fileSize2 > MAX_SIZE)
         {
             return false;
         }
@@ -36,7 +40,7 @@ protected:
         std::ifstream f1(file1, std::ios::binary);
         std::ifstream f2(file2, std::ios::binary);
 
-        if (!f1.is_open() || !f2.is_open()) 
+        if(! f1.is_open() || ! f2.is_open())
         {
             return false;
         }
@@ -48,24 +52,25 @@ protected:
     }
 };
 
-TEST_F(MultithreadingCopyToolTest, CopySuccessTest) 
+TEST_F(MultithreadingCopyToolTest, CopySuccessTest)
 {
     CopyTool copyTool;
     EXPECT_EQ(copyTool.copy("source.txt", "target.txt"), ReturnCode::Success);
     EXPECT_TRUE(areFilesIdentical("source.txt", "target.txt"));
 }
 
-TEST_F(MultithreadingCopyToolTest, CopyReadErrorTest) 
+TEST_F(MultithreadingCopyToolTest, CopyReadErrorTest)
 {
     CopyTool copyTool;
     EXPECT_EQ(copyTool.copy("nonexistent.txt", "target.txt"), ReturnCode::ReadError);
     EXPECT_FALSE(areFilesIdentical("source.txt", "target.txt"));
 }
 
-TEST_F(MultithreadingCopyToolTest, CopyWriteErrorTest) 
+TEST_F(MultithreadingCopyToolTest, CopyWriteErrorTest)
 {
     CopyTool copyTool;
-    EXPECT_EQ(copyTool.copy("source.txt", "nonexistent_directory/target.txt"), ReturnCode::WriteError);
+    EXPECT_EQ(
+      copyTool.copy("source.txt", "nonexistent_directory/target.txt"), ReturnCode::WriteError);
     EXPECT_FALSE(areFilesIdentical("source.txt", "target.txt"));
 }
-}
+}    // namespace

@@ -1,6 +1,7 @@
 #include "multithreading.h"
+#include "multiprocessing.h"
 
 int main(int argc, char *const argv[])
 {
-    runMutithreadingCopyTool(argc, argv);
+    runMutiprocessingCopyTool(argc, argv);
 }
