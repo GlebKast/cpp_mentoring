@@ -53,6 +53,7 @@ void reader(const std::string &fileName, const std::string &sharedMemoryName)
     int dummy = 0;
     size_t recv_size = 0;
     unsigned int priority = 0;
+    boost::posix_time::ptime timeout;
 
     while(file)
     {
@@ -61,7 +62,13 @@ void reader(const std::string &fileName, const std::string &sharedMemoryName)
         dummy = file.gcount();
         mqChunkSize.send(&dummy, sizeof(dummy), 0);
 
-        mqChunkReady.receive(&dummy, sizeof(dummy), recv_size, priority);
+        timeout =
+          boost::posix_time::second_clock::universal_time() + boost::posix_time::seconds(5);
+
+        if(! mqChunkReady.timed_receive(&dummy, sizeof(dummy), recv_size, priority, timeout))
+        {
+            return;
+        }
     }
     dummy = -1;
     mqChunkSize.send(&dummy, sizeof(dummy), 0);
@@ -86,10 +93,18 @@ void writer(const std::string &fileName, const std::string &sharedMemoryName)
     int dummy = 0;
     size_t recv_size = 0;
     unsigned int priority = 0;
+    boost::posix_time::ptime timeout;
 
     while(true)
     {
-        mqChunkSize.receive(&dummy, sizeof(dummy), recv_size, priority);
+        timeout =
+          boost::posix_time::microsec_clock::universal_time() + boost::posix_time::seconds(5);
+
+        if(! mqChunkSize.timed_receive(&dummy, sizeof(dummy), recv_size, priority, timeout))
+        {
+            return;
+        }
+
         if(dummy == -1)
         {
             return;

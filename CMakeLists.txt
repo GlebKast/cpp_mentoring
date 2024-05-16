@@ -18,6 +18,7 @@ if(BUILD_TESTING)
         set(GTEST_FILES
             unit_tests/GTestMain.cpp
             unit_tests/multithreadingUnitTests.cpp
+            unit_tests/multiprocessingUnitTests.cpp
         )
 
         include_directories(${GTEST_INCLUDE_DIRS})
