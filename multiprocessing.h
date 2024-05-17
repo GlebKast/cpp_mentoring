@@ -42,15 +42,18 @@ void reader(const std::string &fileName, const std::string &sharedMemoryName)
     boost::interprocess::mapped_region region(shm, boost::interprocess::read_write);
     SharedMemoryBuffer buffer(region);
 
-    boost::interprocess::message_queue::remove("mqChunkReady");
+    std::string mqChunkReadyName = "mqChunkReady" + sharedMemoryName;
+    std::string mqChunkSizeName = "mqChunkSize" + sharedMemoryName;
+
+    boost::interprocess::message_queue::remove(mqChunkReadyName.c_str());
     boost::interprocess::message_queue mqChunkReady(
-      boost::interprocess::create_only, "mqChunkReady", 1, sizeof(int));
+      boost::interprocess::create_only, mqChunkReadyName.c_str(), 1, sizeof(int));
 
-    boost::interprocess::message_queue::remove("mqChunkSize");
+    boost::interprocess::message_queue::remove(mqChunkSizeName.c_str());
     boost::interprocess::message_queue mqChunkSize(
-      boost::interprocess::create_only, "mqChunkSize", 1, sizeof(int));
+      boost::interprocess::create_only, mqChunkSizeName.c_str(), 1, sizeof(int));
 
-    int dummy = 0;
+    int payload = 0;
     size_t recv_size = 0;
     unsigned int priority = 0;
     boost::posix_time::ptime timeout;
@@ -59,19 +62,19 @@ void reader(const std::string &fileName, const std::string &sharedMemoryName)
     {
         file.read(buffer.data(), CHUNK_SIZE);
 
-        dummy = file.gcount();
-        mqChunkSize.send(&dummy, sizeof(dummy), 0);
+        payload = file.gcount();
+        mqChunkSize.send(&payload, sizeof(payload), 0);
 
         timeout =
           boost::posix_time::second_clock::universal_time() + boost::posix_time::seconds(5);
 
-        if(! mqChunkReady.timed_receive(&dummy, sizeof(dummy), recv_size, priority, timeout))
+        if(! mqChunkReady.timed_receive(&payload, sizeof(payload), recv_size, priority, timeout))
         {
             return;
         }
     }
-    dummy = -1;
-    mqChunkSize.send(&dummy, sizeof(dummy), 0);
+    payload = -1;
+    mqChunkSize.send(&payload, sizeof(payload), 0);
 }
 
 void writer(const std::string &fileName, const std::string &sharedMemoryName)
@@ -84,13 +87,16 @@ void writer(const std::string &fileName, const std::string &sharedMemoryName)
     boost::interprocess::mapped_region region(shm, boost::interprocess::read_write);
     SharedMemoryBuffer buffer(region);
 
-    boost::interprocess::message_queue mqChunkReady(boost::interprocess::open_only, "mqChunkReady");
+    std::string mqChunkReadyName = "mqChunkReady" + sharedMemoryName;
+    std::string mqChunkSizeName = "mqChunkSize" + sharedMemoryName;
 
-    boost::interprocess::message_queue mqChunkSize(boost::interprocess::open_only, "mqChunkSize");
+    boost::interprocess::message_queue mqChunkReady(boost::interprocess::open_only, mqChunkReadyName.c_str());
+
+    boost::interprocess::message_queue mqChunkSize(boost::interprocess::open_only, mqChunkSizeName.c_str());
 
     auto start = std::chrono::system_clock::now();
 
-    int dummy = 0;
+    int payload = 0;
     size_t recv_size = 0;
     unsigned int priority = 0;
     boost::posix_time::ptime timeout;
@@ -100,19 +106,19 @@ void writer(const std::string &fileName, const std::string &sharedMemoryName)
         timeout =
           boost::posix_time::microsec_clock::universal_time() + boost::posix_time::seconds(5);
 
-        if(! mqChunkSize.timed_receive(&dummy, sizeof(dummy), recv_size, priority, timeout))
+        if(! mqChunkSize.timed_receive(&payload, sizeof(payload), recv_size, priority, timeout))
         {
             return;
         }
 
-        if(dummy == -1)
+        if(payload == -1)
         {
             return;
         }
 
-        file.write(buffer.data(), dummy);
+        file.write(buffer.data(), payload);
 
-        mqChunkReady.send(&dummy, sizeof(dummy), 0);
+        mqChunkReady.send(&payload, sizeof(payload), 0);
     }
 }
 }    // namespace multiprocessing
