@@ -1,4 +1,4 @@
-#include "multiprocessing.h"
+#include "MultiprocessingCopyTool.h"
 
 #include <gtest/gtest.h>
 #include <stdio.h>
@@ -64,9 +64,9 @@ protected:
 
 TEST_F(MultiprocessingCopyToolTest, CopySuccessTest)
 {
-    system("./mentoringProj read source.txt target.txt shared_memory &");
+    system("./copyTool read source.txt target.txt shared_memory &");
     system("sleep 2 &");
-    system("./mentoringProj write source.txt target.txt shared_memory");
+    system("./copyTool write source.txt target.txt shared_memory");
     EXPECT_TRUE(areFilesIdentical("source.txt", "target.txt"));
 }
 
@@ -74,7 +74,7 @@ TEST_F(MultiprocessingCopyToolTest, ReadTimeoutTest)
 {
     auto start = std::chrono::high_resolution_clock::now();
 
-    system("./mentoringProj read source.txt target.txt shared_memory");
+    system("./copyTool read source.txt target.txt shared_memory");
 
     auto end = std::chrono::high_resolution_clock::now();
 
@@ -89,7 +89,7 @@ TEST_F(MultiprocessingCopyToolTest, WriteTimeoutTest)
 {
     auto start = std::chrono::high_resolution_clock::now();
 
-    system("./mentoringProj write source.txt target.txt shared_memory");
+    system("./copyTool write source.txt target.txt shared_memory");
 
     auto end = std::chrono::high_resolution_clock::now();
 
