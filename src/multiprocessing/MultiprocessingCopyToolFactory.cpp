@@ -1,6 +1,8 @@
 #include "MultiprocessingCopyToolFactory.h"
 
-ICopyTool *MultiprocessingCopyToolFactory::FactoryMethod() const
+ICopyTool *MultiprocessingCopyToolFactory::createCopyTool() const
 {
+    spdlog::trace("MultiprocessingCopyToolFactory::createCopyTool()");
+    
     return new multiprocessing::MultiprocessingCopyTool();
 }

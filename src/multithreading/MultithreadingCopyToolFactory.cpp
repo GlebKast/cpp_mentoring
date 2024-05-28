@@ -1,6 +1,8 @@
 #include "MultithreadingCopyToolFactory.h"
 
-ICopyTool *MultithreadingCopyToolFactory::FactoryMethod() const
+ICopyTool *MultithreadingCopyToolFactory::createCopyTool() const
 {
+    spdlog::trace("MultithreadingCopyToolFactory::createCopyTool()");
+    
     return new multithreading::MultithreadingCopyTool();
 }

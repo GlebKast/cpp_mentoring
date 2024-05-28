@@ -1,121 +1,134 @@
 #include "MultiprocessingCopyTool.h"
 
-using namespace multiprocessing;
-
-MultiprocessingCopyTool::~MultiprocessingCopyTool()
+namespace multiprocessing
 {
-    boost::interprocess::message_queue::remove(m_mqChunkReadyName.c_str());
+using namespace fileManager;
+
+MultiprocessingCopyTool::MultiprocessingCopyTool() :
+    m_chunkController(nullptr),
+    m_fileReader(nullptr),
+    m_fileWriter(nullptr),
+    m_copyToolValidator(nullptr)
+{
+    spdlog::trace("MultiprocessingCopyTool::MultiprocessingCopyTool()");
 }
 
-MultiprocessingCopyTool::MultiprocessingCopyTool() : m_chunk(CHUNK_SIZE) {}
+MultiprocessingCopyTool::MultiprocessingCopyTool(
+  std::shared_ptr<IChunkController> chunkController,
+  std::shared_ptr<IFileReader> fileReader,
+  std::shared_ptr<IFileWriter> fileWriter,
+  std::shared_ptr<ICopyToolValidator> copyToolValidator) :
+    m_chunkController(chunkController),
+    m_fileReader(fileReader),
+    m_fileWriter(fileWriter),
+    m_copyToolValidator(copyToolValidator)
+{
+    spdlog::trace(
+      "MultiprocessingCopyTool::MultiprocessingCopyTool(chunkController, fileReader, fileWriter)");
+}
 
 ReturnCode MultiprocessingCopyTool::copy(int argc, char *const argv[])
 {
-    if(argc != 5)
+    spdlog::trace("MultiprocessingCopyTool::copy()");
+
+    if(m_copyToolValidator == nullptr)
     {
-        std::cerr << "Usage: " << argv[0]
-                  << " <command> <source> <destination> <shared memory name>" << std::endl;
+        m_copyToolValidator = std::make_shared<MultiprocessingCopyToolValidator>();
+    }
+
+    if(m_copyToolValidator->validateUserInput(argc, argv) == false)
+    {
         return ReturnCode::InvalidArguments;
     }
 
     std::string command(argv[1]);
-    std::string source(argv[2]);
-    std::string destination(argv[3]);
-    m_mqChunkReadyName = argv[4];
+    std::string sourceFileName(argv[2]);
+    std::string targetFileName(argv[3]);
+    std::string sharedMemoryName = argv[4];
 
-    if(source == destination)
+    m_chunk.resize(CHUNK_SIZE);
+
+    if(m_chunkController == nullptr)
     {
-        std::cout << "Source and destination are the same. Exiting." << std::endl;
-        return ReturnCode::InvalidArguments;
+        m_chunkController = std::make_shared<MultiprocessingChunkController>(sharedMemoryName);
     }
 
     if(command == "read")
     {
-        read(source);
+        if(m_fileReader == nullptr)
+        {
+            m_fileReader = std::make_shared<StreamFileReader>(sourceFileName.c_str());
+        }
+
+        return read();
     }
     else if(command == "write")
     {
-        write(destination);
-    }
-    else
-    {
-        std::cerr << "Unknown command: " << command << std::endl;
-        return ReturnCode::InvalidArguments;
-    }
-
-    return ReturnCode::Success;
-}
-
-ReturnCode MultiprocessingCopyTool::read(const std::string &sourceName)
-{
-    std::ifstream file(sourceName, std::ios::binary);
-
-    boost::posix_time::ptime timeout;
-
-    auto mqChunkReady = boost::interprocess::message_queue(
-      boost::interprocess::open_or_create, m_mqChunkReadyName.c_str(), 1, CHUNK_SIZE);
-
-    while(file)
-    {
-        file.read(m_chunk.data(), CHUNK_SIZE);
-
-        if(file.gcount() < CHUNK_SIZE)
+        if(m_fileWriter == nullptr)
         {
-            m_chunk.resize(file.gcount());
+            m_fileWriter = std::make_shared<StreamFileWriter>(targetFileName.c_str());
         }
 
-        timeout = boost::posix_time::second_clock::universal_time() + boost::posix_time::seconds(5);
+        return write();
+    }
 
-        if(mqChunkReady.timed_send(m_chunk.data(), m_chunk.size(), 0, timeout) == false)
+    return ReturnCode::CopyError;
+}
+
+ReturnCode MultiprocessingCopyTool::read()
+{
+    spdlog::trace("MultiprocessingCopyTool::read()");
+
+    std::size_t actualSize = 0;
+
+    while(m_fileReader->isEndOfFile() == false)
+    {
+        if(m_fileReader->read(m_chunk.data(), CHUNK_SIZE, actualSize) == false)
+        {
+            return ReturnCode::ReadError;
+        }
+
+        if(actualSize < CHUNK_SIZE)
+        {
+            m_chunk.resize(actualSize);
+        }
+
+        if(m_chunkController->put(m_chunk.data(), m_chunk.size()) == false)
         {
             return ReturnCode::ReadError;
         }
     }
 
-    char lastChunk[] = "";
-    std::size_t lastChunkSize = 0;
-
-    mqChunkReady.send(lastChunk, lastChunkSize, 0);
-
-    while(mqChunkReady.get_num_msg() != 0 || timeout > boost::posix_time::second_clock::universal_time())
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
+    m_chunkController->notifyCompleted();
 
     return ReturnCode::Success;
 }
 
-ReturnCode MultiprocessingCopyTool::write(const std::string &targetName)
+ReturnCode MultiprocessingCopyTool::write()
 {
-    std::ofstream file(targetName, std::ios::binary);
+    spdlog::trace("MultiprocessingCopyTool::write()");
 
-    boost::posix_time::ptime timeout;
-
-    std::size_t recv_size = 0;
-    unsigned int priority = 0;
-
-    auto mqChunkReady = boost::interprocess::message_queue(
-      boost::interprocess::open_or_create, m_mqChunkReadyName.c_str(), 1, CHUNK_SIZE);
+    std::size_t actualSize = 0;
 
     while(true)
     {
-        timeout =
-          boost::posix_time::microsec_clock::universal_time() + boost::posix_time::seconds(5);
-
-        if(
-          mqChunkReady.timed_receive(m_chunk.data(), CHUNK_SIZE, recv_size, priority, timeout) ==
-          false)
+        if(m_chunkController->get(m_chunk.data(), actualSize) == false)
         {
             return ReturnCode::WriteError;
         }
 
-        file.write(m_chunk.data(), recv_size);
-
-        if(recv_size == 0)
+        if(m_chunkController->isCompleted())
         {
-            return ReturnCode::Success;
+            break;
+        }
+
+        if(m_fileWriter->write(m_chunk.data(), actualSize) == false)
+        {
+            return ReturnCode::WriteError;
         }
     }
 
     return ReturnCode::Success;
 }
+
+}    // namespace multiprocessing

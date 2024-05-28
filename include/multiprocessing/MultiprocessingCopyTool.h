@@ -10,32 +10,43 @@ Discover how to organize interprocess synchronization (windows, Linux, MacOS)
 */
 
 #pragma once
-#include "../ICopyTool.h"
 
-#include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/interprocess/ipc/message_queue.hpp>
-#include <boost/interprocess/mapped_region.hpp>
-#include <boost/interprocess/shared_memory_object.hpp>
+#include "ICopyTool.h"
+#include "MultiprocessingChunkController.h"
+#include "StreamFileReader.h"
+#include "StreamFileWriter.h"
+#include "MultiprocessingCopyToolValidator.h"
 
 namespace multiprocessing
 {
+
 class MultiprocessingCopyTool : public ICopyTool
 {
 public:
     MultiprocessingCopyTool();
 
-    ~MultiprocessingCopyTool();
+    MultiprocessingCopyTool(
+      std::shared_ptr<IChunkController> chunkController,
+      std::shared_ptr<fileManager::IFileReader> fileReader,
+      std::shared_ptr<fileManager::IFileWriter> fileWriter,
+      std::shared_ptr<ICopyToolValidator> copyToolValidator);
+
+    virtual ~MultiprocessingCopyTool() override = default;
 
     ReturnCode copy(int argc, char *const argv[]) override;
 
-    ReturnCode read(const std::string &sourceName) override;
+    ReturnCode read() override;
 
-    ReturnCode write(const std::string &targetName) override;
+    ReturnCode write() override;
 
 private:
     std::vector<char> m_chunk;
-    std::string m_mqChunkReadyName;
+    std::shared_ptr<IChunkController> m_chunkController;
+    std::shared_ptr<fileManager::IFileReader> m_fileReader;
+    std::shared_ptr<fileManager::IFileWriter> m_fileWriter;
+    std::shared_ptr<ICopyToolValidator> m_copyToolValidator;
 };
+
 }    // namespace multiprocessing
 
 // add class for controling

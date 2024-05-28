@@ -1,11 +1,16 @@
 #include "MultiprocessingCopyToolFactory.h"
 #include "MultithreadingCopyToolFactory.h"
+#include "Utils.h"
 
 int main(int argc, char *const argv[])
 {
-    std::unique_ptr<CopyToolFactory> cp = std::make_unique<MultiprocessingCopyToolFactory>();
+    spdlog::set_level(spdlog::level::info);
+
+    std::shared_ptr<CopyToolFactory> cp = std::make_shared<MultiprocessingCopyToolFactory>();
 
     ReturnCode ret = cp->copy(argc, argv);
+
+    spdlog::info("Return code: {}", returnCodeToString(ret));
 
     return ret == ReturnCode::Success ? 0 : 1;
 }

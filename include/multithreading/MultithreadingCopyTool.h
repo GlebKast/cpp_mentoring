@@ -9,12 +9,11 @@ Second thread should write the data to the target file.
 */
 
 #pragma once
-#include "../ICopyTool.h"
-
-#include <atomic>
-#include <condition_variable>
-#include <future>
-#include <mutex>
+#include "ICopyTool.h"
+#include "MultithreadingChunkController.h"
+#include "StreamFileReader.h"
+#include "StreamFileWriter.h"
+#include "MultithreadingCopyToolValidator.h"
 
 namespace multithreading
 {
@@ -24,17 +23,26 @@ class MultithreadingCopyTool : public ICopyTool
 public:
     MultithreadingCopyTool();
 
+    MultithreadingCopyTool(
+      std::shared_ptr<IChunkController> chunkController,
+      std::shared_ptr<fileManager::IFileReader> fileReader,
+      std::shared_ptr<fileManager::IFileWriter> fileWriter,
+      std::shared_ptr<ICopyToolValidator> copyToolValidator);
+
+    virtual ~MultithreadingCopyTool() override = default;
+
     ReturnCode copy(int argc, char *const argv[]) override;
 
-    ReturnCode read(const std::string &sourceName) override;
+    ReturnCode read() override;
 
-    ReturnCode write(const std::string &targetName) override;
+    ReturnCode write() override;
 
 private:
     std::vector<char> m_chunk;
-    std::atomic<bool> m_completed;
-    std::atomic<bool> m_chunkReady;
-    std::mutex m_chunkMutex;
-    std::condition_variable m_chunkCV;
+    std::shared_ptr<IChunkController> m_chunkController;
+    std::shared_ptr<fileManager::IFileReader> m_fileReader;
+    std::shared_ptr<fileManager::IFileWriter> m_fileWriter;
+    std::shared_ptr<ICopyToolValidator> m_copyToolValidator;
 };
+
 }    // namespace multithreading

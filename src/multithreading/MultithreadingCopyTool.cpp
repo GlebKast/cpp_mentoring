@@ -1,34 +1,60 @@
 #include "MultithreadingCopyTool.h"
 
-using namespace multithreading;
+namespace multithreading
+{
+using namespace fileManager;
 
 MultithreadingCopyTool::MultithreadingCopyTool() :
-    m_chunk(CHUNK_SIZE), m_completed(false), m_chunkReady(false) {};
+    m_chunkController(nullptr), m_fileReader(nullptr), m_fileWriter(nullptr), m_copyToolValidator(nullptr)
+{
+    spdlog::trace("MultithreadingCopyTool::MultithreadingCopyTool()");
+}
+
+MultithreadingCopyTool::MultithreadingCopyTool(
+  std::shared_ptr<IChunkController> chunkController,
+  std::shared_ptr<IFileReader> fileReader,
+  std::shared_ptr<IFileWriter> fileWriter,
+  std::shared_ptr<ICopyToolValidator> copyToolValidator) :
+    m_chunkController(chunkController), m_fileReader(fileReader), m_fileWriter(fileWriter), m_copyToolValidator(copyToolValidator)
+{
+    spdlog::trace(
+      "MultithreadingCopyTool::MultithreadingCopyTool(chunkController, fileReader, fileWriter)");
+}
 
 ReturnCode MultithreadingCopyTool::copy(int argc, char *const argv[])
 {
-    if(argc != 3)
+    spdlog::trace("MultithreadingCopyTool::copy()");
+
+    if(m_copyToolValidator == nullptr)
     {
-        std::cout << "Error. Please, provide 2 arguments: source and target file names.";
+        m_copyToolValidator = std::make_shared<MultithreadingCopyToolValidator>();
+    }
+
+    if(m_copyToolValidator->validateUserInput(argc, argv) == false)
+    {
         return ReturnCode::InvalidArguments;
     }
-    if(! std::filesystem::exists(argv[1]))
+
+    const std::string sourceFileName {argv[1]};
+    const std::string targetFileName {argv[2]};
+
+    m_chunk.resize(CHUNK_SIZE);
+
+    if(m_chunkController == nullptr)
     {
-        std::cout << "Error. File to copy doesn't exist.";
-        return ReturnCode::ReadError;
+        m_chunkController = std::make_shared<MultithreadingChunkController>();
+    }
+    if(m_fileReader == nullptr)
+    {
+        m_fileReader = std::make_shared<StreamFileReader>(sourceFileName.c_str());
+    }
+    if(m_fileWriter == nullptr)
+    {
+        m_fileWriter = std::make_shared<StreamFileWriter>(targetFileName.c_str());
     }
 
-    const std::string sourceName {argv[1]};
-    const std::string targetName {argv[2]};
-
-    std::filesystem::path filePath(targetName);
-    if(filePath.has_parent_path() && ! std::filesystem::exists(filePath.parent_path()))
-    {
-        return ReturnCode::WriteError;
-    }
-
-    auto readF = std::async(std::launch::async, &ICopyTool::read, this, sourceName);
-    auto writeF = std::async(std::launch::async, &ICopyTool::write, this, targetName);
+    auto readF = std::async(std::launch::async, &ICopyTool::read, this);
+    auto writeF = std::async(std::launch::async, &ICopyTool::write, this);
 
     if(readF.get() != ReturnCode::Success)
     {
@@ -38,88 +64,64 @@ ReturnCode MultithreadingCopyTool::copy(int argc, char *const argv[])
     {
         return ReturnCode::WriteError;
     }
-    else
-    {
-        std::filesystem::path p {sourceName};
-        std::filesystem::path pC {targetName};
-        if(
-          ! std::filesystem::exists(p) || ! std::filesystem::exists(pC) ||
-          std::filesystem::file_size(p) != std::filesystem::file_size(pC))
-        {
-            return ReturnCode::CopyError;
-        }
-    }
-
+   
     return ReturnCode::Success;
 }
 
-ReturnCode MultithreadingCopyTool::read(const std::string &sourceName)
+ReturnCode MultithreadingCopyTool::read()
 {
-    std::ifstream file(sourceName, std::ifstream::binary);
+    spdlog::trace("MultithreadingCopyTool::read()");
 
-    if(! file)
+    std::size_t actualSize = 0;
+
+    while(m_fileReader->isEndOfFile() == false)
     {
-        m_completed = true;
-        m_chunkCV.notify_one();
-        return ReturnCode::ReadError;
-    }
-
-    while(! file.eof())
-    {
-        std::unique_lock lk(m_chunkMutex);
-
-        file.read(m_chunk.data(), m_chunk.size());
-
-        if(file.gcount() < CHUNK_SIZE)
+        if(m_fileReader->read(m_chunk.data(), CHUNK_SIZE, actualSize) == false)
         {
-            m_chunk.resize(file.gcount());
+            return ReturnCode::ReadError;
         }
 
-        m_chunkReady = true;
+        if(actualSize < CHUNK_SIZE)
+        {
+            m_chunk.resize(actualSize);
+        }
 
-        lk.unlock();
-
-        m_chunkCV.notify_one();
-
-        lk.lock();
-
-        m_chunkCV.wait(lk, [this] { return m_chunkReady == false; });
+        if(m_chunkController->put(m_chunk.data(), m_chunk.size()) == false)
+        {
+            return ReturnCode::ReadError;
+        }
     }
 
-    m_completed = true;
-    m_chunkCV.notify_one();
+    m_chunkController->notifyCompleted();
 
     return ReturnCode::Success;
 }
 
-ReturnCode MultithreadingCopyTool::write(const std::string &targetName)
+ReturnCode MultithreadingCopyTool::write()
 {
-    std::ofstream file(targetName, std::ofstream::binary);
+    spdlog::trace("MultithreadingCopyTool::write()");
 
-    if(! file)
+    std::size_t actualSize = 0;
+
+    while(true)
     {
-        return ReturnCode::WriteError;
-    }
-
-    while(! m_completed)
-    {
-        std::unique_lock lk(m_chunkMutex);
-
-        m_chunkCV.wait(lk, [this] { return m_chunkReady == true || m_completed == true; });
-
-        if(m_completed)
+        if(m_chunkController->get(m_chunk.data(), actualSize) == false)
         {
-            return ReturnCode::Success;
+            return ReturnCode::WriteError;
         }
 
-        file.write(m_chunk.data(), m_chunk.size());
+        if(m_chunkController->isCompleted())
+        {
+            break;
+        }
 
-        m_chunkReady = false;
-
-        lk.unlock();
-
-        m_chunkCV.notify_one();
+        if(m_fileWriter->write(m_chunk.data(), actualSize) == false)
+        {
+            return ReturnCode::WriteError;
+        }
     }
 
     return ReturnCode::Success;
 }
+
+}    // namespace multithreading

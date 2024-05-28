@@ -5,10 +5,11 @@ include(CTest)
 enable_testing()
 
 find_package(Boost 1.85.0 REQUIRED COMPONENTS system filesystem)
+find_package(spdlog REQUIRED)
 
 add_subdirectory(src)
 
-target_link_libraries(CopyTool Boost::system Boost::filesystem)
+target_link_libraries(CopyTool Boost::system Boost::filesystem  spdlog::spdlog)
 
 if (BUILD_TESTING) 
     find_package(GTest) 
