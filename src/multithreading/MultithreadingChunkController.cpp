@@ -22,6 +22,14 @@ bool MultithreadingChunkController::get(char *chunk, std::size_t &actualSize)
 
     m_chunkCV.wait(lk, [this] { return m_chunkReady == true || m_completed == true; });
 
+    if(m_completed == true)
+    {
+        return true;
+    }
+
+    actualSize = m_chunk.size();
+    chunk = m_chunk.data();
+
     m_chunkReady = false;
 
     lk.unlock();
@@ -36,6 +44,13 @@ bool MultithreadingChunkController::put(const char *chunk, std::size_t actualSiz
     spdlog::trace("MultithreadingChunkController::put()");
 
     std::unique_lock lk(m_chunkMutex);
+
+    if(actualSize != m_chunk.size())
+    {
+        m_chunk.resize(actualSize);
+    }
+
+    std::copy(chunk, chunk + actualSize, m_chunk.begin());
 
     m_chunkReady = true;
 

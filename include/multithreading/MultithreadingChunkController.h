@@ -26,6 +26,7 @@ public:
 private:
     std::atomic<bool> m_completed;
     std::atomic<bool> m_chunkReady;
+    std::vector<char> m_chunk;
     std::mutex m_chunkMutex;
     std::condition_variable m_chunkCV;
 };

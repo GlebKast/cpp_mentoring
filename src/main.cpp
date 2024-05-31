@@ -6,7 +6,7 @@ int main(int argc, char *const argv[])
 {
     spdlog::set_level(spdlog::level::info);
 
-    std::shared_ptr<CopyToolFactory> cp = std::make_shared<MultiprocessingCopyToolFactory>();
+    std::shared_ptr<CopyToolFactory> cp = std::make_shared<MultithreadingCopyToolFactory>();
 
     ReturnCode ret = cp->copy(argc, argv);
 
